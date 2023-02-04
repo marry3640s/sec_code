@@ -172,6 +172,7 @@ bool IsKeyHeadEnd(char *pBuf)
 
 void ReadSecData(char *pFileName)
 {
+	printf("%s\n", pFileName);
 	InfoList.clear();
 	HANDLE hFile;
 	hFile = CreateFile(pFileName, GENERIC_READ | GENERIC_WRITE,
@@ -385,7 +386,7 @@ EntSharesInfo AnalyseEntContextInfo(char *pBuf)
 {
 	EntSharesInfo info;
 	std::string jtxt =xmltojson(pBuf);
-	printf("%s\n", jtxt.data());
+	//printf("%s\n", jtxt.data());
 	Json::Reader reader;
 	Json::Value root;
 	//从字符串中读取数据
@@ -469,6 +470,7 @@ void WriteInfoToJson(char *szFullPath)
 							dataList[m].push_back(ent.instant);
 							root[tmp].append(node_ent);
 						}
+						break;
 
 						
 					}
@@ -513,6 +515,7 @@ void WriteInfoToJson(char *szFullPath)
 						node_ent["value"] = Json::Value(info.value);
 						std::string tmp = keyString[m] + 8;
 						root[tmp].append(node_ent);
+						break;
 					}
 				}
 			}
@@ -550,6 +553,7 @@ void WriteInfoToJson(char *szFullPath)
 					}
 					node_ent["value"] = Json::Value(info.value);
 					root["EntityCommonStockSharesOutstanding"].append(node_ent);
+					break;
 				}
 			}
 		}
@@ -558,7 +562,8 @@ void WriteInfoToJson(char *szFullPath)
 		if (memcmp(InfoList[k].data() + 1, keyString[9], strlen(keyString[9])) == 0)
 		{
 			struct gaapInfo info = AnalyseGaapInfo((char *)InfoList[k].data());
-			root["TradingSymbol"] = Json::Value(info.value);
+			if(!root.isMember("TradingSymbol"))
+			   root["TradingSymbol"] = Json::Value(info.value);
 		}
 		if (memcmp(InfoList[k].data() + 1, keyString[10], strlen(keyString[10])) == 0)
 		{
@@ -566,7 +571,7 @@ void WriteInfoToJson(char *szFullPath)
 			root["EntityRegistrantName"] = Json::Value(info.value);
 		}
 	}
-	printf("%s\n", root.toStyledString().data());
+//	printf("%s\n", root.toStyledString().data());
 
 	char pszWritePath[MAX_PATH] = "C:\\bighouse\\sec10json";
 	char pszSymbloName[MAX_PATH] = "";
@@ -749,7 +754,7 @@ int main()
 	//ListAllFileInDirectory((char *)"C:\\sec_chinesestock\\sec-edgar-filings\\");
     ListAllFileInDirectory((char *)"C:\\bighouse\\sec_10Q\\");
 	return 0;
-	/*char pszFileName[] = "C:\\bighouse\\sec_10Q\\ROKU, INC\\full-submission.txt";
+	/*char pszFileName[] = "C:\\bighouse\\sec_10Q\\TEVA PHARMACEUTICAL INDUSTRIES LTD\\full-submission.txt";
 	ReadSecData(pszFileName);
 	WriteInfoToJson((char *)"c:\\bighouse\\roku.txt");*/
 	/*for(int k=0;k<InfoList.size();k++)
