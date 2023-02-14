@@ -37,6 +37,7 @@ char keyString[][128]=
 	"us-gaap:AllowanceForDoubtfulAccountsReceivableCurrent", //坏账,
 	"us-gaap:Liabilities",//负债总额
 	"us-gaap:LiabilitiesAndStockholdersEquity",//负债和股东权益合计
+	"us-gaap:AssetsCurrent",  //流动资产
 	"us-gaap:StockholdersEquity",//母公司股东权益合计
 	"us-gaap:StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",//股东权益合计
 	"us-gaap:SharesOutstanding",   //普通股
@@ -287,7 +288,6 @@ nt:
 }
 //读取sec文件，并提取关键字内容
 
-
 struct gaapInfo AnalyseGaapInfo(char *pBuf)
 {
 	struct gaapInfo info;
@@ -318,7 +318,28 @@ struct gaapInfo AnalyseGaapInfo(char *pBuf)
 				{
 					if (memcmp("<", pBuf + k, 1) == 0)
 					{
+						char pszTemp[128]="";
+						memcpy(pszTemp, pBuf + nIndex, k - nIndex);
 						memcpy(info.value, pBuf + nIndex, k - nIndex);
+						char *pp=strstr(pszTemp, "&#160;");
+						if (pp != NULL)
+						{
+							memset(info.value, 0x00, sizeof(info.value));
+							memcpy(info.value, pszTemp, pp - pszTemp);
+							info.value[strlen(info.value)] = ' ';
+							memcpy(info.value + strlen(info.value), pp + strlen("&#160;"), strlen(pszTemp) + pszTemp - pp - strlen("&#160;"));
+						}
+						memset(pszTemp, 0x00, sizeof(pszTemp));
+						memcpy(pszTemp, info.value, strlen(info.value));
+
+						pp = strstr(pszTemp, "&amp;");
+						if (pp != NULL)
+						{
+							memset(info.value, 0x00, sizeof(info.value));
+							memcpy(info.value, pszTemp, pp - pszTemp);
+							info.value[strlen(info.value)] = ' ';
+							memcpy(info.value + strlen(info.value), pp + strlen("&amp;"), strlen(pszTemp) + pszTemp - pp - strlen("&amp;"));
+						}
 						break;
 					}
 					k++;
@@ -478,7 +499,7 @@ void WriteInfoToJson(char *szFullPath)
 			}
 		}
 
-		for (int m = 4; m < 8; m++)
+		for (int m = 4; m < 9; m++)
 		{
 			if (memcmp(InfoList[k].data() + 1, keyString[m], strlen(keyString[m])) == 0
 				&& (InfoList[k].data()[strlen(keyString[m]) + 1] == ' ' || InfoList[k].data()[strlen(keyString[m]) + 1] == 0x0a))
@@ -521,7 +542,7 @@ void WriteInfoToJson(char *szFullPath)
 			}
 		}
 		//"EntityCommonStockSharesOutstanding"
-		if (memcmp(InfoList[k].data()+1 , keyString[8],strlen(keyString[8]))==0)
+		if (memcmp(InfoList[k].data()+1 , keyString[9],strlen(keyString[9]))==0)
 		{
 			struct gaapInfo info = AnalyseGaapInfo((char *)InfoList[k].data());
 			for (int j = 0; j < InfoList.size(); j++)
@@ -559,13 +580,13 @@ void WriteInfoToJson(char *szFullPath)
 		}
 
 
-		if (memcmp(InfoList[k].data() + 1, keyString[9], strlen(keyString[9])) == 0)
+		if (memcmp(InfoList[k].data() + 1, keyString[10], strlen(keyString[10])) == 0)
 		{
 			struct gaapInfo info = AnalyseGaapInfo((char *)InfoList[k].data());
 			if(!root.isMember("TradingSymbol"))
 			   root["TradingSymbol"] = Json::Value(info.value);
 		}
-		if (memcmp(InfoList[k].data() + 1, keyString[10], strlen(keyString[10])) == 0)
+		if (memcmp(InfoList[k].data() + 1, keyString[11], strlen(keyString[11])) == 0)
 		{
 			struct gaapInfo info = AnalyseGaapInfo((char *)InfoList[k].data());
 			root["EntityRegistrantName"] = Json::Value(info.value);
@@ -740,6 +761,18 @@ DWORD ListAllFileInDirectory(LPSTR szPath)
 }
 int main()
 {
+
+	/*char pszaa[] = "Axon Enterprise,&#160;Inc";
+	char pszTemp[128] = "";
+	char value[128] = "";
+	memcpy(pszTemp, pszaa, strlen(pszaa));
+	char *pp = strstr(pszTemp, "&#160;");
+	if (pp != NULL)
+	{
+		memcpy(value, pszTemp, pp - pszTemp);
+		value[strlen(value)] = ' ';
+		memcpy(value + strlen(value), pp + strlen("&#160;"), strlen(pszTemp) + pszTemp - pp - strlen("&#160;"));
+	}*/
 	if (nMode == 1)
 	{
 		
