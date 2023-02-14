@@ -24,6 +24,8 @@ void ReadJsonData(char *pFileName, char *pName)
 	long long llShares = 0;
 	long long llTmp;
 	long long llEquity = 0;
+	long long llAssetsCurrent = 0;
+	long long llLiab = 0;
 	Json::Value va;
 	
 	if (!in.is_open())
@@ -41,6 +43,10 @@ void ReadJsonData(char *pFileName, char *pName)
 		goto t1;
 	if (!root.isMember("EntityRegistrantName"))
 		goto t1;
+	if (!root.isMember("AssetsCurrent"))
+		goto t1;
+	if (!root.isMember("Liabilities"))
+		goto t1;
 //	printf("%s\n", root.toStyledString().data());
 	va = root["EntityCommonStockSharesOutstanding"];
 	for (int k = 0; k < va.size(); k++)
@@ -52,8 +58,10 @@ void ReadJsonData(char *pFileName, char *pName)
 	//printf("%lld\n", llShares);
 
 	llEquity= atoll(root["StockholdersEquity"][0]["value"].asCString());
-
-	sprintf_s(pszWirte, 256, "%s|%s|%lld|%lld\n", root["TradingSymbol"].asCString(), root["EntityRegistrantName"].asCString(), llShares, llEquity);
+	llAssetsCurrent= atoll(root["AssetsCurrent"][0]["value"].asCString());
+	llLiab= atoll(root["Liabilities"][0]["value"].asCString());
+	sprintf_s(pszWirte, 256, "%s|%s|%lld|%lld|%lld|%lld\n", root["TradingSymbol"].asCString(), 
+		root["EntityRegistrantName"].asCString(), llShares, llEquity,llAssetsCurrent, llLiab);
 	//sprintf_s(pszWirte, 256, "%s\n", pszSymbloName);
 	int k;
 	/*for (k = 0; k < CompList.size(); k++)
