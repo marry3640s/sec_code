@@ -19,59 +19,169 @@ using namespace std;
 
 #pragma comment (lib, "User32.lib")
 
-struct StockInfo {
-	double pe;
-	double nprice;
-	long long llshares;
-	char pszName[128];
-};
-std::vector<StockInfo> infolist;
-StockInfo GetSotckInfo(char *szPath)
+//struct StockInfo {
+//	double pe;
+//	double nprice;
+//	long long llshares;
+//	char pszName[128];
+//};
+
+//struct ReportInfo {
+//	long long llCommonShares;//总股本
+//	double fEquity;//总权益
+//};
+
+
+
+struct FinInfo
 {
-	StockInfo info;
-	memset(&info, 0x00, sizeof(info));
+	double fCommonShares;//总股本
+	double fEquity;//总权益
+	double fCash;//现金
+	double fCashEqu;//现金等价物
+	double fCashShortInv;//现金和短期投资
+	double fAccReceivable;//应收账款
+	double fTotalReceivables;//总应收账款
+	double fTotalCurrentAssets;//流动资产合计
+	double fLongTermInvestments;//长期投资
+
+	double fTotalCurrentLiabilities;//流动负债总计
+	double fTotalLiabilities;//总负债
+};
+
+
+
+struct FiscalPeriodInfo
+{
+	std::string pszStatementDate;  //财报截止日期
+	std::string pszSourceData;     //披露日期
+	std::string pszReportType;     //报告类型,如10k,10Q
+	std::string pszStatementType;  //陈述类型
+
+	FinInfo fin;//财务信息
+	/*union
+	{
+		IncInfo incinfo;
+		BalInfo bainfo;
+		CasInfo casinfo;
+	}sc;*/
+};
+
+struct StockInfo
+{
+	std::string name;
+	std::vector<FiscalPeriodInfo> Finlist;
+
+};
+
+std::vector<StockInfo> infoList;
+
+void GetReportInfo(char *szPath)
+{
+
+	StockInfo bb;
+	struct FiscalPeriodInfo info;
 	rapidxml::file<>xmlFile(szPath);
 	rapidxml::xml_document<>doc;
 	doc.parse<0>(xmlFile.data());
-	rapidxml::xml_node<> *root = doc.first_node("ReportSnapshot");
-	rapidxml::xml_node<> *cogen = root->first_node("CoGeneralInfo");
-	rapidxml::xml_node<> * shares = cogen->first_node("SharesOut");
-	/*std::cout << shares->value() << std::endl;
-	std::cout << shares->first_attribute("Date")->value() << std::endl;
-	std::cout << shares->first_attribute("TotalFloat")->value() << std::endl;*/
-	info.llshares = atoll(shares->value());
+	rapidxml::xml_node<> *root = doc.first_node("ReportFinancialStatements");
+	rapidxml::xml_node<> *fin = root->first_node("FinancialStatements");
+	rapidxml::xml_node<> *ann = fin->first_node("AnnualPeriods");
+	if (ann == NULL)
+		return;
 
-	rapidxml::xml_node<> *ratio = root->first_node("Ratios");
-
-	for (rapidxml::xml_node<> * group = ratio->first_node("Group"); group; group = group->next_sibling())
+	for (rapidxml::xml_node<> * pp = root->first_node("Issues")->first_node("Issue")->first_node("IssueID"); pp; pp = pp->next_sibling())
 	{
-		if (memcmp(group->first_attribute("ID")->value(), "Price and Volume", strlen("Price and Volume")) == 0)
+		if (memcmp(pp->first_attribute("Type")->value(), "Ticker", strlen("Ticker")) == 0)
 		{
-			for (rapidxml::xml_node<> * pp = group->first_node("Ratio"); pp; pp = pp->next_sibling())
-			{
-				if (memcmp(pp->first_attribute("FieldName")->value(), "NPRICE", strlen("NPRICE")) == 0)
-				{
-					info.nprice=atof(pp->value());
-				}
-			}
-		}
-		if (memcmp(group->first_attribute("ID")->value(), "Other Ratios", strlen("Other Ratios")) == 0)
-		{
-			for (rapidxml::xml_node<> * pp = group->first_node("Ratio"); pp; pp = pp->next_sibling())
-			{
-				if (memcmp(pp->first_attribute("FieldName")->value(), "PEEXCLXOR", strlen("PEEXCLXOR")) == 0)
-				{
-					/*std::cout << pp->value() << std::endl;
-					break;*/
-					info.pe= atof(pp->value());
-					return info;
-				}
-			}
+			bb.name = pp->value();
+			break;
 		}
 	}
-	return info;
-	//return "0";
+	//root->first_node("Issues")->first_node("IssueID");
+	for (rapidxml::xml_node<> * fiscal = ann->first_node("FiscalPeriod"); fiscal; fiscal = fiscal->next_sibling())
+	{
+		memset(&info.fin, 0x00, sizeof(info.fin));
+		for (rapidxml::xml_node<> * pp = fiscal->first_node("Statement"); pp; pp = pp->next_sibling())
+		{
+			rapidxml::xml_node<> *head= pp->first_node("FPHeader");
+			info.pszStatementDate = head->first_node("StatementDate")->value();
+			info.pszReportType= head->first_node("Source")->value();
+			if (info.pszReportType == "PROSPECTUS" || info.pszReportType =="ARS")//招股说明书
+			{
+				goto nt;
+			}
+		//	info.pszSourceData = head->first_node("Source")->first_attribute("Date")->value();
+			if (memcmp(pp->first_attribute("Type")->value(), "INC", strlen("INC")) == 0)
+			{
+				info.pszStatementType = "INC";
+			}
+			else if (memcmp(pp->first_attribute("Type")->value(), "BAL", strlen("BAL")) == 0)
+			{
+				info.pszStatementType = "BAL";
+				for (rapidxml::xml_node<> * item = pp->first_node("lineItem"); item; item = item->next_sibling())
+				{
+					if (memcmp(item->first_attribute("coaCode")->value(), "QTCO", strlen("QTCO")) == 0)
+					{
+						info.fin.fCommonShares = atof(item->value());
+					}
+					if (memcmp(item->first_attribute("coaCode")->value(), "QTLE", strlen("QTLE")) == 0)
+					{
+						info.fin.fEquity = atof(item->value());
+					}
+					if (memcmp(item->first_attribute("coaCode")->value(), "ACSH", strlen("ACSH")) == 0)
+					{
+						info.fin.fCash = atof(item->value());
+					}
+					if (memcmp(item->first_attribute("coaCode")->value(), "ACAE", strlen("ACAE")) == 0)
+					{
+						info.fin.fCashEqu = atof(item->value());
+					}
+					if (memcmp(item->first_attribute("coaCode")->value(), "SCSI", strlen("SCSI")) == 0)
+					{
+						info.fin.fCashShortInv = atof(item->value());
+					}
+					if (memcmp(item->first_attribute("coaCode")->value(), "AACR", strlen("AACR")) == 0)
+					{
+						info.fin.fAccReceivable = atof(item->value());
+					}
+					if (memcmp(item->first_attribute("coaCode")->value(), "ATRC", strlen("ATRC")) == 0)
+					{
+						info.fin.fTotalReceivables = atof(item->value());
+					}
+					if (memcmp(item->first_attribute("coaCode")->value(), "ATCA", strlen("ATCA")) == 0)
+					{
+						info.fin.fTotalCurrentAssets = atof(item->value());
+					}
+
+					if (memcmp(item->first_attribute("coaCode")->value(), "SINV", strlen("SINV")) == 0)
+					{
+						info.fin.fLongTermInvestments = atof(item->value());
+					}
+
+					if (memcmp(item->first_attribute("coaCode")->value(), "LTCL", strlen("LTCL")) == 0)
+					{
+						info.fin.fTotalCurrentLiabilities = atof(item->value());
+					}
+
+					if (memcmp(item->first_attribute("coaCode")->value(), "LTLL", strlen("LTLL")) == 0)
+					{
+						info.fin.fTotalLiabilities = atof(item->value());
+					}
+				}
+			}
+			else if (memcmp(pp->first_attribute("Type")->value(), "CAS", strlen("CAS")) == 0)
+			{
+				info.pszStatementType = "CAS";
+			}
+		}
+
+		bb.Finlist.push_back(info);
+	}
+nt:
+	infoList.push_back(bb);
 }
+
 int nTick = 0;
 double fAllpe = 0;
 DWORD ListAllFileInDirectory(LPSTR szPath)
@@ -122,16 +232,18 @@ DWORD ListAllFileInDirectory(LPSTR szPath)
 			}
 			else
 			{
-				StockInfo  info= GetSotckInfo(szFullPath);
-				memset(info.pszName, 0x00, sizeof(info.pszName));
-				memcpy(info.pszName, FindFileData.cFileName, strlen(FindFileData.cFileName) - 4);
-				printf("%s=%f\n", info.pszName, info.pe);
+				GetReportInfo(szFullPath);
+				printf("%s\n", FindFileData.cFileName);
+			//	StockInfo  info= GetSotckInfo(szFullPath);
+			//	memset(info.pszName, 0x00, sizeof(info.pszName));
+			//	memcpy(info.pszName, FindFileData.cFileName, strlen(FindFileData.cFileName) - 4);
+				/*printf("%s=%f\n", info.pszName, info.pe);
 				if (info.pe > 0)
 				{
 					nTick++;
 					fAllpe += info.pe;
 					infolist.push_back(info);
-				}
+				}*/
 			//	char pszSy[MAX_PATH] = "";
 			
 				
@@ -143,7 +255,11 @@ DWORD ListAllFileInDirectory(LPSTR szPath)
 }
 int main()
 {
-	ListAllFileInDirectory((char *)"C:\\bighouse\\财务数据\\快照\\20230723\\");
+	//GetReportInfo((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\BWAC.txt");
+	//GetReportInfo((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\AAPL.txt");
+	ListAllFileInDirectory((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\");
+	//ListAllFileInDirectory((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\");
+	/*ListAllFileInDirectory((char *)"C:\\bighouse\\财务数据\\快照\\20230723\\");
 	printf("纳斯达克100指数 总盈利数=%d,平均市盈率=%f\n", nTick,fAllpe / (double)nTick);
 	double fAllVaule=0;
 	for (int k = 0; k < infolist.size(); k++)
@@ -156,7 +272,7 @@ int main()
 		printf("%s=%f\n", infolist[k].pszName,(infolist[k].llshares*infolist[k].nprice) / fAllVaule * infolist[k].pe);
 		llRatio += (infolist[k].llshares*infolist[k].nprice) / fAllVaule * infolist[k].pe;
 	}
-	printf("纳斯达克100指数 总盈利数=%d,加权平均市盈率=%f\n", nTick, llRatio);
+	printf("纳斯达克100指数 总盈利数=%d,加权平均市盈率=%f\n", nTick, llRatio);*/
 	return 1;
 	
 	
