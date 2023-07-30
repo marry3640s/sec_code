@@ -7,6 +7,7 @@
 #include <set>
 #include<string>
 #include<vector>
+#include <map>
 #include <sstream>
 //#include "json/json.h"
 
@@ -70,16 +71,92 @@ struct FiscalPeriodInfo
 struct StockInfo
 {
 	std::string name;
+	double fValue; //市值
+	double fNPrice;//现价
 	std::vector<FiscalPeriodInfo> Finlist;
 
 };
 HANDLE hLogFile = 0;
-std::vector<StockInfo> infoList;
+//std::vector<StockInfo> infoList;
+std::map<std::string, StockInfo> infoList;
+void GetSotckInfo(char *szPath)
+{
+	StockInfo info;
+	
+	rapidxml::file<>xmlFile(szPath);
+	rapidxml::xml_document<>doc;
+	doc.parse<0>(xmlFile.data());
+	rapidxml::xml_node<> *root = doc.first_node("ReportSnapshot");
+	rapidxml::xml_node<> *cogen = root->first_node("CoGeneralInfo");
+	rapidxml::xml_node<> * shares = cogen->first_node("SharesOut");
+	if (shares == NULL)
+		return;
+	double fdr = 1.0;
+	rapidxml::xml_node<> *glo=root->first_node("Issues")->first_node("Issue")->first_node("GlobalListingType");
+	if (glo != NULL)
+	{
+		rapidxml::xml_attribute<> *sharesPer = glo->first_attribute("SharesPerListing");
+		if (sharesPer != NULL)
+		{
+			fdr = atof(sharesPer->value());
+		}
+		//fdr=atof(glo->first_attribute("SharesPerListing")->value());
+	}
+	
+
+	for (rapidxml::xml_node<> * pp = root->first_node("Issues")->first_node("Issue")->first_node("IssueID"); pp; pp = pp->next_sibling())
+	{
+		if (memcmp(pp->first_attribute("Type")->value(), "Ticker", strlen("Ticker")) == 0)
+		{
+			info.name = pp->value();
+			break;
+		}
+	}
+	/*std::cout << shares->value() << std::endl;
+	std::cout << shares->first_attribute("Date")->value() << std::endl;
+	std::cout << shares->first_attribute("TotalFloat")->value() << std::endl;*/
+	long long llshares = atoll(shares->value());
+
+	rapidxml::xml_node<> *ratio = root->first_node("Ratios");
+
+	for (rapidxml::xml_node<> * group = ratio->first_node("Group"); group; group = group->next_sibling())
+	{
+		if (memcmp(group->first_attribute("ID")->value(), "Price and Volume", strlen("Price and Volume")) == 0)
+		{
+			for (rapidxml::xml_node<> * pp = group->first_node("Ratio"); pp; pp = pp->next_sibling())
+			{
+				if (memcmp(pp->first_attribute("FieldName")->value(), "NPRICE", strlen("NPRICE")) == 0)
+				{
+					info.fNPrice = atof(pp->value());
+				}
+			}
+		}
+		if (memcmp(group->first_attribute("ID")->value(), "Other Ratios", strlen("Other Ratios")) == 0)
+		{
+			for (rapidxml::xml_node<> * pp = group->first_node("Ratio"); pp; pp = pp->next_sibling())
+			{
+				if (memcmp(pp->first_attribute("FieldName")->value(), "PEEXCLXOR", strlen("PEEXCLXOR")) == 0)
+				{
+					/*std::cout << pp->value() << std::endl;
+					break;*/
+				/*	info.pe = atof(pp->value());
+					return info;*/
+				}
+			}
+		}
+	}
+	info.fValue = llshares/fdr * info.fNPrice/1000000;
+	infoList.insert(std::pair<std::string, StockInfo >(info.name, info));
+	/*infoList.push_back(info);*/
+	//return info;
+	//return "0";
+}
 
 void GetReportInfo(char *szPath)
 {
 
-	StockInfo bb;
+	//StockInfo bb;
+	std::string name;
 	struct FiscalPeriodInfo info;
 	rapidxml::file<>xmlFile(szPath);
 	rapidxml::xml_document<>doc;
@@ -89,15 +166,42 @@ void GetReportInfo(char *szPath)
 	rapidxml::xml_node<> *ann = fin->first_node("AnnualPeriods");
 	if (ann == NULL)
 		return;
+	rapidxml::xml_node<> *regcur= root->first_node("CoGeneralInfo")->first_node("ReportingCurrency");
+
+	//<ReportingCurrency Code = "KRW">Won< / ReportingCurrency>
 
 	for (rapidxml::xml_node<> * pp = root->first_node("Issues")->first_node("Issue")->first_node("IssueID"); pp; pp = pp->next_sibling())
 	{
 		if (memcmp(pp->first_attribute("Type")->value(), "Ticker", strlen("Ticker")) == 0)
 		{
-			bb.name = pp->value();
+			name = pp->value();
 			break;
 		}
 	}
+	//if (name == "LI")
+	//{
+	//	int c;
+	//	c = 5;
+	//}
+
+	std::string szCurcode = "USD";
+	double fExchangeRate = 1.0; //汇率
+	if (regcur != NULL)
+	{
+		rapidxml::xml_attribute<> *curcode = regcur->first_attribute("Code");
+		if (curcode != NULL)
+		{
+			szCurcode = curcode->value();
+			fExchangeRate = atof(root->first_node("CoGeneralInfo")->first_node("MostRecentExchange")->value());
+			
+		}
+	}
+	
+	std::map<std::string, StockInfo>::iterator it;
+	it = infoList.find(name);
+	if (it == infoList.end())
+		return;
+	
 	//root->first_node("Issues")->first_node("IssueID");
 	for (rapidxml::xml_node<> * fiscal = ann->first_node("FiscalPeriod"); fiscal; fiscal = fiscal->next_sibling())
 	{
@@ -176,26 +280,43 @@ void GetReportInfo(char *szPath)
 			}
 		}
 
-		bb.Finlist.push_back(info);
+		//bb.Finlist.push_back(info);
+		it->second.Finlist.push_back(info);
 	}
 nt:
-	infoList.push_back(bb);
+	if (it->second.Finlist.size() < 1)
+		return;
+	double ratA = 0.001;
+	double ratB = 0.001;
+	if ( it->second.Finlist[0].fin.fTotalCurrentAssets> it->second.Finlist[0].fin.fTotalLiabilities)
+        ratA=  ((it->second.Finlist[0].fin.fTotalCurrentAssets-it->second.Finlist[0].fin.fTotalLiabilities)/ fExchangeRate)/it->second.fValue;
+	if (it->second.Finlist[0].fin.fTotalCurrentAssets + it->second.Finlist[0].fin.fLongTermInvestments > it->second.Finlist[0].fin.fTotalLiabilities)
+        ratB = ((it->second.Finlist[0].fin.fTotalCurrentAssets+it->second.Finlist[0].fin.fLongTermInvestments - it->second.Finlist[0].fin.fTotalLiabilities)/ fExchangeRate)/it->second.fValue;
+
+
+
+	char pszWrite[1024];
+	DWORD dwWrite;
+	sprintf_s(pszWrite, 1024, "%s,%0.3f,%0.3f,%0.3f,%0.3f,%0.3f,%0.3f\n", it->second.name.data(), it->second.fValue, it->second.Finlist[0].fin.fTotalCurrentAssets,
+		it->second.Finlist[0].fin.fLongTermInvestments, it->second.Finlist[0].fin.fTotalLiabilities, ratA, ratB);
+	WriteFile(hLogFile, pszWrite, strlen(pszWrite), &dwWrite, 0);
+	//infoList.push_back(bb);
 	//公司上市小于3年不统计
-	if (bb.Finlist.size() <= 3 )
+	/*if (it->second.Finlist.size() <= 3 )
 		return;
 
 	double fInitShares = 0;
 	double fSharesRatioList[5] = { 1,1,1,1,1 };
 	
-	for (int k = 0; k < bb.Finlist.size(); k++)
+	for (int k = 0; k < it->second.Finlist.size(); k++)
 	{
 		if (k == 0)
 		{
-			fInitShares = bb.Finlist[0].fin.fCommonShares;
+			fInitShares = it->second.Finlist[0].fin.fCommonShares;
 			if (fInitShares <= 0)
 				return;
 		}
-		if (bb.Finlist[k].fin.fCommonShares <= 0)
+		if (it->second.Finlist[k].fin.fCommonShares <= 0)
 			break;
 		else if (k >= 1)
 		{
@@ -209,12 +330,12 @@ nt:
 	DWORD dwWrite;
 	sprintf_s(pszWrite, 1024, "%s,%0.3f,%0.2f,%0.2f,%0.2f,%0.2f,%0.2f\n", bb.name.data(), bb.Finlist[0].fin.fCommonShares, fSharesRatioList[0], fSharesRatioList[1], fSharesRatioList[2], fSharesRatioList[3]
 	, fSharesRatioList[4]);
-	WriteFile(hLogFile, pszWrite, strlen(pszWrite), &dwWrite, 0);
+	WriteFile(hLogFile, pszWrite, strlen(pszWrite), &dwWrite, 0);*/
 }
 
 int nTick = 0;
 double fAllpe = 0;
-DWORD ListAllFileInDirectory(LPSTR szPath)
+DWORD ListAllFileInDirectory(LPSTR szPath,int nType)
 {
 	char szFilePath[MAX_PATH];
 	WIN32_FIND_DATA FindFileData;
@@ -258,11 +379,14 @@ DWORD ListAllFileInDirectory(LPSTR szPath)
 			{
 				//	printf("<DIR>");
 
-				ListAllFileInDirectory(szFullPath);
+				ListAllFileInDirectory(szFullPath,nType);
 			}
 			else
 			{
-				GetReportInfo(szFullPath);
+				if(nType==0)
+				   GetSotckInfo(szFullPath);
+				else if(nType==1)
+				  GetReportInfo(szFullPath);
 				printf("%s\n", FindFileData.cFileName);
 			//	StockInfo  info= GetSotckInfo(szFullPath);
 			//	memset(info.pszName, 0x00, sizeof(info.pszName));
@@ -286,11 +410,15 @@ DWORD ListAllFileInDirectory(LPSTR szPath)
 int main()
 {
 	
-	hLogFile = CreateFile("c:\\bighouse\\shares.txt", GENERIC_READ | GENERIC_WRITE,
+	hLogFile = CreateFile("c:\\bighouse\\ReportsFins.txt", GENERIC_READ | GENERIC_WRITE,
 		FILE_SHARE_READ, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
-	//GetReportInfo((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\BWAC.txt");
+	//GetSotckInfo((char *)"C:\\bighouse\\美股财务数据\\快照\\NASDAQ\\BDRX.txt");
+	/*GetSotckInfo((char *)"C:\\bighouse\\美股财务数据\\快照\\NASDAQ\\LI.txt");
+	GetReportInfo((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\LI.txt");*/
 	//GetReportInfo((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\AAPL.txt");
-	ListAllFileInDirectory((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\");
+	//ListAllFileInDirectory((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\");
+	ListAllFileInDirectory((char *)"C:\\bighouse\\美股财务数据\\快照\\",0);
+	ListAllFileInDirectory((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\",1);
 	//ListAllFileInDirectory((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\");
 	/*ListAllFileInDirectory((char *)"C:\\bighouse\\财务数据\\快照\\20230723\\");
 	printf("纳斯达克100指数 总盈利数=%d,平均市盈率=%f\n", nTick,fAllpe / (double)nTick);
