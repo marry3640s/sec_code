@@ -73,7 +73,7 @@ struct StockInfo
 	std::vector<FiscalPeriodInfo> Finlist;
 
 };
-
+HANDLE hLogFile = 0;
 std::vector<StockInfo> infoList;
 
 void GetReportInfo(char *szPath)
@@ -180,6 +180,36 @@ void GetReportInfo(char *szPath)
 	}
 nt:
 	infoList.push_back(bb);
+	//公司上市小于3年不统计
+	if (bb.Finlist.size() <= 3 )
+		return;
+
+	double fInitShares = 0;
+	double fSharesRatioList[5] = { 1,1,1,1,1 };
+	
+	for (int k = 0; k < bb.Finlist.size(); k++)
+	{
+		if (k == 0)
+		{
+			fInitShares = bb.Finlist[0].fin.fCommonShares;
+			if (fInitShares <= 0)
+				return;
+		}
+		if (bb.Finlist[k].fin.fCommonShares <= 0)
+			break;
+		else if (k >= 1)
+		{
+			fSharesRatioList[k - 1] =  fInitShares/ bb.Finlist[k].fin.fCommonShares;
+			for (int j = k; j < 5; j++)
+				fSharesRatioList[j] = fSharesRatioList[k - 1];
+		}
+	}
+
+	char pszWrite[1024];
+	DWORD dwWrite;
+	sprintf_s(pszWrite, 1024, "%s,%0.3f,%0.2f,%0.2f,%0.2f,%0.2f,%0.2f\n", bb.name.data(), bb.Finlist[0].fin.fCommonShares, fSharesRatioList[0], fSharesRatioList[1], fSharesRatioList[2], fSharesRatioList[3]
+	, fSharesRatioList[4]);
+	WriteFile(hLogFile, pszWrite, strlen(pszWrite), &dwWrite, 0);
 }
 
 int nTick = 0;
@@ -255,6 +285,9 @@ DWORD ListAllFileInDirectory(LPSTR szPath)
 }
 int main()
 {
+	
+	hLogFile = CreateFile("c:\\bighouse\\shares.txt", GENERIC_READ | GENERIC_WRITE,
+		FILE_SHARE_READ, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 	//GetReportInfo((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\BWAC.txt");
 	//GetReportInfo((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\AAPL.txt");
 	ListAllFileInDirectory((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\");
