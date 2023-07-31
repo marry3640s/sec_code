@@ -79,7 +79,7 @@ struct StockInfo
 HANDLE hLogFile = 0;
 //std::vector<StockInfo> infoList;
 std::map<std::string, StockInfo> infoList;
-void GetSotckInfo(char *szPath)
+void GetSotckInfo(char *szPath,char *pszSym)
 {
 	StockInfo info;
 	
@@ -102,16 +102,23 @@ void GetSotckInfo(char *szPath)
 		}
 		//fdr=atof(glo->first_attribute("SharesPerListing")->value());
 	}
-	
 
-	for (rapidxml::xml_node<> * pp = root->first_node("Issues")->first_node("Issue")->first_node("IssueID"); pp; pp = pp->next_sibling())
+	double fExchangeRate = 1.0; //汇率
+	/*rapidxml::xml_node<> *mos = root->first_node("Issues")->first_node("Issue")->first_node("MostRecentSplit");
+	if (mos != NULL)
+	{
+		fExchangeRate = atof(mos->value());
+	}*/
+	info.name = pszSym;
+
+	/*for (rapidxml::xml_node<> * pp = root->first_node("Issues")->first_node("Issue")->first_node("IssueID"); pp; pp = pp->next_sibling())
 	{
 		if (memcmp(pp->first_attribute("Type")->value(), "Ticker", strlen("Ticker")) == 0)
 		{
 			info.name = pp->value();
 			break;
 		}
-	}
+	}*/
 	/*std::cout << shares->value() << std::endl;
 	std::cout << shares->first_attribute("Date")->value() << std::endl;
 	std::cout << shares->first_attribute("TotalFloat")->value() << std::endl;*/
@@ -145,14 +152,14 @@ void GetSotckInfo(char *szPath)
 			}
 		}
 	}
-	info.fValue = llshares/fdr * info.fNPrice/1000000;
+	info.fValue = llshares/fdr * info.fNPrice/1000000/ fExchangeRate;
 	infoList.insert(std::pair<std::string, StockInfo >(info.name, info));
 	/*infoList.push_back(info);*/
 	//return info;
 	//return "0";
 }
 
-void GetReportInfo(char *szPath)
+void GetReportInfo(char *szPath , char *pszSym)
 {
 
 	//StockInfo bb;
@@ -163,27 +170,27 @@ void GetReportInfo(char *szPath)
 	doc.parse<0>(xmlFile.data());
 	rapidxml::xml_node<> *root = doc.first_node("ReportFinancialStatements");
 	rapidxml::xml_node<> *fin = root->first_node("FinancialStatements");
-	rapidxml::xml_node<> *ann = fin->first_node("AnnualPeriods");
+	rapidxml::xml_node<> *ann = /*fin->first_node("AnnualPeriods")*/ fin->first_node("InterimPeriods") ;
 	if (ann == NULL)
 		return;
 	rapidxml::xml_node<> *regcur= root->first_node("CoGeneralInfo")->first_node("ReportingCurrency");
 
 	//<ReportingCurrency Code = "KRW">Won< / ReportingCurrency>
 
-	for (rapidxml::xml_node<> * pp = root->first_node("Issues")->first_node("Issue")->first_node("IssueID"); pp; pp = pp->next_sibling())
+	/*for (rapidxml::xml_node<> * pp = root->first_node("Issues")->first_node("Issue")->first_node("IssueID"); pp; pp = pp->next_sibling())
 	{
 		if (memcmp(pp->first_attribute("Type")->value(), "Ticker", strlen("Ticker")) == 0)
 		{
 			name = pp->value();
 			break;
 		}
-	}
+	}*/
 	//if (name == "LI")
 	//{
 	//	int c;
 	//	c = 5;
 	//}
-
+	name = pszSym;
 	std::string szCurcode = "USD";
 	double fExchangeRate = 1.0; //汇率
 	if (regcur != NULL)
@@ -286,6 +293,8 @@ void GetReportInfo(char *szPath)
 nt:
 	if (it->second.Finlist.size() < 1)
 		return;
+	if (it->second.fValue < 50)
+		return;
 	double ratA = 0.001;
 	double ratB = 0.001;
 	if ( it->second.Finlist[0].fin.fTotalCurrentAssets> it->second.Finlist[0].fin.fTotalLiabilities)
@@ -383,10 +392,13 @@ DWORD ListAllFileInDirectory(LPSTR szPath,int nType)
 			}
 			else
 			{
+				char pszSym[256];
+				memset(pszSym, 0x00, sizeof(pszSym));
+				memcpy(pszSym, FindFileData.cFileName, strlen(FindFileData.cFileName) - 4);
 				if(nType==0)
-				   GetSotckInfo(szFullPath);
+				   GetSotckInfo(szFullPath,pszSym);
 				else if(nType==1)
-				  GetReportInfo(szFullPath);
+				  GetReportInfo(szFullPath, pszSym);
 				printf("%s\n", FindFileData.cFileName);
 			//	StockInfo  info= GetSotckInfo(szFullPath);
 			//	memset(info.pszName, 0x00, sizeof(info.pszName));
@@ -413,8 +425,8 @@ int main()
 	hLogFile = CreateFile("c:\\bighouse\\ReportsFins.txt", GENERIC_READ | GENERIC_WRITE,
 		FILE_SHARE_READ, 0, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0);
 	//GetSotckInfo((char *)"C:\\bighouse\\美股财务数据\\快照\\NASDAQ\\BDRX.txt");
-	/*GetSotckInfo((char *)"C:\\bighouse\\美股财务数据\\快照\\NASDAQ\\LI.txt");
-	GetReportInfo((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\LI.txt");*/
+	/*GetSotckInfo((char *)"C:\\bighouse\\美股财务数据\\快照\\NASDAQ\\LI.txt", (char *)"LI");
+	GetReportInfo((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\LI.txt", (char *)"LI");*/
 	//GetReportInfo((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\NASDAQ\\AAPL.txt");
 	//ListAllFileInDirectory((char *)"C:\\bighouse\\美股财务数据\\ReportsFinStatements\\");
 	ListAllFileInDirectory((char *)"C:\\bighouse\\美股财务数据\\快照\\",0);
